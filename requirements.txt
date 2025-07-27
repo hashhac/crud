@@ -1,0 +1,18 @@
+flask
+torch>=2.0.0
+torchaudio
+transformers[torch]
+soundfile
+whisper
+numpy
+scipy
+datasets
+accelerate
+SentencePiece
+openai-whisper
+transformers
+--index-url https://download.pytorch.org/whl/cpu 
+librosa
+pywebview
+requests 
+soundfile

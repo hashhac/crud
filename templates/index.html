@@ -54,6 +54,7 @@
         let audioContext;
         let isRecording = false;
         let isInitializing = false;
+        let systemState = "idle"; // 'human', 'agent', or 'idle'
 
         async function initRecorder() {
             if (isInitializing || recorder) return true;
@@ -87,102 +88,125 @@
             }
         }
 
-    // --- MOUSE DOWN EVENT ---
-    recordBtn.addEventListener("mousedown", async () => {
-      // Initialize recorder if it hasn't been already
-      const ready = await initRecorder();
-      if (!ready || isRecording) return; // Exit if not ready or already recording
+    // --- TOGGLE BUTTON LOGIC ---
+    recordBtn.addEventListener("click", async () => {
+      if (systemState === "idle" || systemState === "agent") {
+        // Start recording (enter human mode)
+        systemState = "human";
+        // Stop any AI audio playback
+        if (!audioPlayer.paused) {
+          audioPlayer.pause();
+          audioPlayer.currentTime = 0;
+        }
+        aiRipple.style.display = "none";
 
-      recorder.record();
-      isRecording = true;
-      recordBtn.textContent = "🛑 Recording...";
-      recordBtn.style.background = "#ff3366";
-      recordBtn.style.transform = "scale(1.05)";
-    });
+        // Initialize recorder if it hasn't been already
+        const ready = await initRecorder();
+        if (!ready) {
+          systemState = "idle";
+          return;
+        }
 
-    // --- MOUSE UP EVENT ---
-    recordBtn.addEventListener("mouseup", () => {
-      // Ensure we are in a recording state before stopping
-      if (!recorder || !isRecording) return;
+        recorder.clear(); // Always clear buffer before new recording
+        recorder.record();
+        isRecording = true;
+        recordBtn.textContent = "🛑 Recording... (Click to stop)";
+        recordBtn.style.background = "#ff3366";
+        recordBtn.style.transform = "scale(1.05)";
+      } else if (systemState === "human" && isRecording) {
+        // Stop recording and process (enter agent mode)
+        recorder.stop();
+        isRecording = false;
+        recordBtn.textContent = "Processing...";
+        systemState = "agent";
 
-      recorder.stop();
-      isRecording = false; // Update state
-      recordBtn.textContent = "Processing...";
-
-      // Export the audio to a WAV blob
-      recorder.exportWAV((blob) => {
-        const formData = new FormData();
-        formData.append("audio", blob, "input.wav");
-
-        // Chain the API calls
-        fetch("/transcribe", { method: "POST", body: formData })
-          .then(response => {
-            if (!response.ok) throw new Error(`Transcription failed: ${response.statusText}`);
-            return response.json();
-          })
-          .then(data => {
-            userText.value = data.text;
-            // Only proceed if text is non-empty and not just whitespace
-            if (!data.text || !data.text.trim()) {
-              aiText.value = "(No speech detected. Please try again.)";
-              contextInfo.style.display = "none";
-              aiRipple.style.display = "none";
-              audioPlayer.style.display = 'none';
-              throw new Error("No speech detected");
-            }
-            return fetch("/generate", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ text: data.text })
-            });
-          })
-          .then(response => {
-            if (!response.ok) throw new Error(`AI generation failed: ${response.statusText}`);
-            return response.json();
-          })
-          .then(data => {
-            aiText.value = data.reply;
-            // Show context information if available
-            if (data.context_info && data.context_info.total_exchanges > 0) {
-              contextText.textContent = `${data.context_info.total_exchanges} exchanges, ~${data.context_info.estimated_tokens} tokens`;
-              contextInfo.style.display = "block";
-            } else {
-              contextInfo.style.display = "none";
-            }
-            aiRipple.style.display = "block";
-            audioPlayer.style.display = 'block'; // Show player
-            return fetch("/tts", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ text: data.reply })
-            });
-          })
-          .then(response => {
-            if (!response.ok) throw new Error(`Text-to-speech failed: ${response.statusText}`);
-            return response.json();
-          })
-          .then(data => {
-            // Use a cache-busting query to ensure the new audio file is loaded
-            audioPlayer.src = data.audio_url + "?t=" + new Date().getTime();
-            audioPlayer.play();
-          })
-          .catch(err => {
-            if (err.message === "No speech detected") {
-              // Already handled, do nothing
-            } else {
-              console.error("\uD83D\uDCA5 An error occurred in the processing chain:", err);
-              alert("An error occurred. Please check the console for details.");
-            }
-          })
-          .finally(() => {
-            // Reset button regardless of success or failure
+        recorder.exportWAV((blob) => {
+          // Defensive: check blob size
+          if (!blob || blob.size === 0) {
+            aiText.value = "(No audio captured. Please try again.)";
+            contextInfo.style.display = "none";
+            aiRipple.style.display = "none";
+            audioPlayer.style.display = 'none';
+            systemState = "idle";
             recordBtn.textContent = "🎤 Hold to Speak";
             recordBtn.style.background = "#fff";
             recordBtn.style.transform = "scale(1)";
-          });
+            return;
+          }
+          const formData = new FormData();
+          formData.append("audio", blob, "input.wav");
 
-        recorder.clear(); // Clear the buffer for the next recording
-      });
+          // Chain the API calls
+          fetch("/transcribe", { method: "POST", body: formData })
+            .then(response => {
+              if (!response.ok) throw new Error(`Transcription failed: ${response.statusText}`);
+              return response.json();
+            })
+            .then(data => {
+              userText.value = data.text;
+              // Only proceed if text is non-empty and not just whitespace
+              if (!data.text || !data.text.trim()) {
+                aiText.value = "(No speech detected. Please try again.)";
+                contextInfo.style.display = "none";
+                aiRipple.style.display = "none";
+                audioPlayer.style.display = 'none';
+                throw new Error("No speech detected");
+              }
+              return fetch("/generate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ text: data.text })
+              });
+            })
+            .then(response => {
+              if (!response.ok) throw new Error(`AI generation failed: ${response.statusText}`);
+              return response.json();
+            })
+            .then(data => {
+              aiText.value = data.reply;
+              // Show context information if available
+              if (data.context_info && data.context_info.total_exchanges > 0) {
+                contextText.textContent = `${data.context_info.total_exchanges} exchanges, ~${data.context_info.estimated_tokens} tokens`;
+                contextInfo.style.display = "block";
+              } else {
+                contextInfo.style.display = "none";
+              }
+              aiRipple.style.display = "block";
+              audioPlayer.style.display = 'block'; // Show player
+              return fetch("/tts", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ text: data.reply })
+              });
+            })
+            .then(response => {
+              if (!response.ok) throw new Error(`Text-to-speech failed: ${response.statusText}`);
+              return response.json();
+            })
+            .then(data => {
+              // Use a cache-busting query to ensure the new audio file is loaded
+              audioPlayer.src = data.audio_url + "?t=" + new Date().getTime();
+              audioPlayer.play();
+            })
+            .catch(err => {
+              if (err.message === "No speech detected") {
+                // Already handled, do nothing
+              } else {
+                console.error("\uD83D\uDCA5 An error occurred in the processing chain:", err);
+                alert("An error occurred. Please check the console for details.");
+              }
+            })
+            .finally(() => {
+              // Reset button regardless of success or failure
+              systemState = "idle";
+              recordBtn.textContent = "🎤 Hold to Speak";
+              recordBtn.style.background = "#fff";
+              recordBtn.style.transform = "scale(1)";
+            });
+
+          recorder.clear(); // Clear the buffer for the next recording
+        });
+      }
     });
 
     // Hide the ripple effect when the AI stops speaking

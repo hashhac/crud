@@ -23,6 +23,7 @@ CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(CURRENT_DIR, "static")
 TEMPLATES_DIR = os.path.join(CURRENT_DIR, "templates")
 
+
 app = Flask(__name__, static_folder=STATIC_DIR, template_folder=TEMPLATES_DIR)
 
 # Create a writable temp directory
@@ -58,6 +59,7 @@ print("Loading SpeechT5 TTS and HiFiGAN...")
 processor = SpeechT5Processor.from_pretrained("microsoft/speecht5_tts")
 tts_model = SpeechT5ForTextToSpeech.from_pretrained("microsoft/speecht5_tts").to(llm_model.device)
 vocoder = SpeechT5HifiGan.from_pretrained("microsoft/speecht5_hifigan").to(llm_model.device)
+# print out the directoeries of the models
 
 # Dummy speaker embedding
 speaker_embeddings = torch.zeros((1, 512)).to(tts_model.device)

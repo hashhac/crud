@@ -12,6 +12,7 @@
     <p><small>🎙️ Hold to speak. AI speaks back with love.</small></p>
 
     <button id="recordBtn" class="btn btn-mic">🎤 Hold to Speak</button>
+    <button id="clearHistoryBtn" class="btn" style="background: rgba(255,255,255,0.2); color: white; font-size: 0.9rem; padding: 8px 16px; margin-left: 10px;">🗑️ Clear History</button>
 
     <div class="mb-3 text-start" style="color:white; margin-top:20px;">
       <strong>You said:</strong>
@@ -21,6 +22,10 @@
     <div class="mb-3 text-start" style="color:white;">
       <strong>AI says:</strong>
       <textarea id="aiText" class="form-control w-100" rows="2" readonly placeholder="AI will reply here..."></textarea>
+    </div>
+
+    <div id="contextInfo" style="color: rgba(255,255,255,0.7); font-size: 0.8rem; margin-bottom: 10px; display: none;">
+      💭 <span id="contextText">Conversation context active</span>
     </div>
 
     <div id="aiRipple" style="display:none; color:white;">
@@ -42,6 +47,8 @@
         const aiText = document.getElementById("aiText");
         const audioPlayer = document.getElementById("audioPlayer");
         const aiRipple = document.getElementById("aiRipple");
+        const contextInfo = document.getElementById("contextInfo");
+        const contextText = document.getElementById("contextText");
 
         let recorder;
         let audioContext;
@@ -127,6 +134,15 @@
           })
           .then(data => {
             aiText.value = data.reply;
+            
+            // Show context information if available
+            if (data.context_info && data.context_info.total_exchanges > 0) {
+              contextText.textContent = `${data.context_info.total_exchanges} exchanges, ~${data.context_info.estimated_tokens} tokens`;
+              contextInfo.style.display = "block";
+            } else {
+              contextInfo.style.display = "none";
+            }
+            
             aiRipple.style.display = "block";
             audioPlayer.style.display = 'block'; // Show player
             return fetch("/tts", {
@@ -162,6 +178,34 @@
     // Hide the ripple effect when the AI stops speaking
     audioPlayer.addEventListener("ended", () => {
       aiRipple.style.display = "none";
+    });
+
+    // Clear conversation history functionality
+    const clearHistoryBtn = document.getElementById("clearHistoryBtn");
+    clearHistoryBtn.addEventListener("click", async () => {
+      try {
+        const response = await fetch("/conversation/clear", { method: "POST" });
+        const data = await response.json();
+        
+        if (response.ok) {
+          // Clear the displayed conversation
+          userText.value = "";
+          aiText.value = "";
+          contextInfo.style.display = "none";
+          
+          // Visual feedback
+          clearHistoryBtn.textContent = "✅ Cleared";
+          setTimeout(() => {
+            clearHistoryBtn.textContent = "🗑️ Clear History";
+          }, 2000);
+          
+          console.log("Conversation history cleared");
+        } else {
+          console.error("Failed to clear history:", data);
+        }
+      } catch (err) {
+        console.error("Error clearing history:", err);
+      }
     });
 
   </script>

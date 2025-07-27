@@ -5,6 +5,7 @@ breain -> TinyLlama-1.1B-Chat-v1.0
 mouth -> microsoft/speecht5_tts & microsoft/speecht5_hifiga
 
 # install
+Not this does require ffmpeg to be installed or simular to be avialble on your os
 ```
 git clone http<git clone link>
 ```

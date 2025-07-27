@@ -122,6 +122,14 @@
           })
           .then(data => {
             userText.value = data.text;
+            // Only proceed if text is non-empty and not just whitespace
+            if (!data.text || !data.text.trim()) {
+              aiText.value = "(No speech detected. Please try again.)";
+              contextInfo.style.display = "none";
+              aiRipple.style.display = "none";
+              audioPlayer.style.display = 'none';
+              throw new Error("No speech detected");
+            }
             return fetch("/generate", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -134,7 +142,6 @@
           })
           .then(data => {
             aiText.value = data.reply;
-            
             // Show context information if available
             if (data.context_info && data.context_info.total_exchanges > 0) {
               contextText.textContent = `${data.context_info.total_exchanges} exchanges, ~${data.context_info.estimated_tokens} tokens`;
@@ -142,7 +149,6 @@
             } else {
               contextInfo.style.display = "none";
             }
-            
             aiRipple.style.display = "block";
             audioPlayer.style.display = 'block'; // Show player
             return fetch("/tts", {
@@ -161,8 +167,12 @@
             audioPlayer.play();
           })
           .catch(err => {
-            console.error("💥 An error occurred in the processing chain:", err);
-            alert("An error occurred. Please check the console for details.");
+            if (err.message === "No speech detected") {
+              // Already handled, do nothing
+            } else {
+              console.error("\uD83D\uDCA5 An error occurred in the processing chain:", err);
+              alert("An error occurred. Please check the console for details.");
+            }
           })
           .finally(() => {
             // Reset button regardless of success or failure

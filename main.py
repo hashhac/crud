@@ -159,6 +159,7 @@ def transcribe():
 def generate():
     data = request.json
     user_input = data.get("text", "").strip()
+    print(f"DEBUG: /generate called with user_input: '{user_input}'")  # Add this line
     if not user_input:
         return jsonify({"reply": "I didn't catch that. Could you repeat?"})
 

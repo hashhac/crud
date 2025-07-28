@@ -1,3 +1,4 @@
 temp_audio/
 build/
 dist/
+.vscode/settings.json

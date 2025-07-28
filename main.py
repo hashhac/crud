@@ -48,7 +48,7 @@ llm_pipeline = pipeline(
     "text-generation",
     model=llm_model,
     tokenizer=tokenizer,
-    max_new_tokens=100,
+    max_new_tokens=400,
     temperature=0.7,
     top_p=0.9,
     do_sample=True
@@ -67,7 +67,7 @@ speaker_embeddings = torch.zeros((1, 512)).to(tts_model.device)
 # --- Conversation Context Management ---
 # TinyLlama has 2048 token context window, we'll use ~1600 tokens for safety
 MAX_CONTEXT_TOKENS = 1600
-SYSTEM_PROMPT = "You are a joyful, proud AI assistant who celebrates diversity and spreads positivity."
+SYSTEM_PROMPT = "You are a joyful, proud AI assistant called Chatty who celebrates diversity and spreads positivity."
 
 class ConversationManager:
     def __init__(self, tokenizer, max_tokens=MAX_CONTEXT_TOKENS):
@@ -194,6 +194,7 @@ def generate():
         "context_info": history_info  # Optional: include in response for debugging
     })
 
+
 @app.route("/tts", methods=["POST"])
 def tts():
     data = request.json
@@ -201,13 +202,27 @@ def tts():
     if not text:
         return jsonify({"error": "No text for TTS"}), 400
 
-    inputs = processor(text=text, return_tensors="pt").to(tts_model.device)
-    with torch.no_grad():
-        spectrogram = tts_model.generate_speech(inputs["input_ids"], speaker_embeddings=speaker_embeddings)
-        waveform = vocoder(spectrogram.unsqueeze(0)).cpu().numpy().squeeze()
+    max_chunk = 300
+    chunks = [text[i:i+max_chunk] for i in range(0, len(text), max_chunk)]
+    waveforms = []
+    print(f"🔉 TTS: Splitting text into {len(chunks)} chunk(s) of up to {max_chunk} chars each.")
+    for idx, chunk in enumerate(chunks):
+        print(f"  - Generating audio for chunk {idx+1}/{len(chunks)}: '{chunk[:40]}{'...' if len(chunk)>40 else ''}'")
+        inputs = processor(text=chunk, return_tensors="pt").to(tts_model.device)
+        with torch.no_grad():
+            spectrogram = tts_model.generate_speech(inputs["input_ids"], speaker_embeddings=speaker_embeddings)
+            waveform = vocoder(spectrogram.unsqueeze(0)).cpu().numpy().squeeze()
+            waveforms.append(waveform)
+
+    # Concatenate all waveforms
+    if len(waveforms) == 1:
+        final_waveform = waveforms[0]
+    else:
+        # Pad to same dtype and concatenate
+        final_waveform = np.concatenate([np.array(w, dtype=np.float32) for w in waveforms])
 
     output_path = os.path.join(TEMP_DIR, "output.wav")
-    wavfile.write(output_path, rate=16000, data=np.int16(waveform * 32767))
+    wavfile.write(output_path, rate=16000, data=np.int16(final_waveform * 32767))
     print(f"🔊 Audio saved: {output_path}")
     return jsonify({"audio_url": "/audio/output.wav"})
 
@@ -240,7 +255,7 @@ def get_context_info():
     return jsonify({
         "summary": summary,
         "max_tokens": MAX_CONTEXT_TOKENS,
-        "context_preview": context_text[:500] + "..." if len(context_text) > 500 else context_text
+        "context_preview": context_text[:1024] + "..." if len(context_text) > 1024 else context_text
     })
 
 if __name__ == "__main__":
